@@ -9,6 +9,7 @@ use atuin_common::utils::{self, Escapable as _};
 use clap::Subcommand;
 use eyre::{Context, Result};
 use runtime_format::{FormatKey, FormatKeyError, ParseSegment, ParsedFmt};
+use serde::Serialize;
 
 #[cfg(feature = "daemon")]
 use atuin_daemon::emit_event;
@@ -102,6 +103,14 @@ pub enum Cmd {
         /// Example: --format "{time} - [{duration}] - {directory}$\t{command}"
         #[arg(long, short)]
         format: Option<String>,
+
+        /// Output in JSON format (NDJSON, one object per line)
+        #[arg(long)]
+        json: bool,
+
+        /// Filter by agent ID
+        #[arg(long)]
+        agent: Option<String>,
     },
 
     /// Get the last command ran
@@ -125,9 +134,18 @@ pub enum Cmd {
         /// Example: --format "{time} - [{duration}] - {directory}$\t{command}"
         #[arg(long, short)]
         format: Option<String>,
+
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
     },
 
     InitStore,
+
+    /// Tag the current session with an agent ID
+    /// This sets ATUIN_AGENT_ID for subsequent commands in this session
+    #[command(subcommand)]
+    Session(SessionCmd),
 
     /// Delete history entries matching the configured exclusion filters
     Prune {
@@ -152,6 +170,19 @@ pub enum Cmd {
     },
 }
 
+/// Session subcommands for agent tagging
+#[derive(Subcommand, Debug)]
+#[command(infer_subcommands = true)]
+pub enum SessionCmd {
+    /// Tag the current session with an agent ID
+    /// Prints shell commands to set the ATUIN_AGENT_ID environment variable
+    Tag {
+        /// The agent identifier to tag this session with
+        #[arg(long)]
+        agent: String,
+    },
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum ListMode {
     Human,
@@ -167,6 +198,78 @@ impl ListMode {
             ListMode::CmdOnly
         } else {
             ListMode::Regular
+        }
+    }
+}
+
+/// JSON output format for history entries
+#[derive(Debug, Serialize)]
+pub struct HistoryJson {
+    pub id: String,
+    pub command: String,
+    pub exit: i64,
+    pub duration: i64,
+    pub cwd: String,
+    pub session: String,
+    pub hostname: String,
+    pub timestamp: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+}
+
+impl From<&History> for HistoryJson {
+    fn from(h: &History) -> Self {
+        Self {
+            id: h.id.0.clone(),
+            command: h.command.clone(),
+            exit: h.exit,
+            duration: h.duration,
+            cwd: h.cwd.clone(),
+            session: h.session.clone(),
+            hostname: h.hostname.clone(),
+            timestamp: h
+                .timestamp
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap_or_default(),
+            agent_id: h.agent_id.clone(),
+        }
+    }
+}
+
+/// Print history as NDJSON (one JSON object per line)
+pub fn print_json(h: &[History], reverse: bool) {
+    let w = std::io::stdout();
+    let mut w = w.lock();
+
+    let iterator: Box<dyn Iterator<Item = &History>> = if reverse {
+        Box::new(h.iter().rev())
+    } else {
+        Box::new(h.iter())
+    };
+
+    for history in iterator {
+        let json = HistoryJson::from(history);
+        match serde_json::to_string(&json) {
+            Ok(line) => {
+                if let Err(err) = writeln!(w, "{line}") {
+                    if err.kind() != io::ErrorKind::BrokenPipe {
+                        eprintln!("ERROR: Failed to write JSON output: {err}");
+                        std::process::exit(1);
+                    }
+                    return;
+                }
+            }
+            Err(err) => {
+                eprintln!("ERROR: Failed to serialize history to JSON: {err}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    if let Err(err) = w.flush() {
+        if err.kind() != io::ErrorKind::BrokenPipe {
+            eprintln!("ERROR: Failed to flush output: {err}");
+            std::process::exit(1);
         }
     }
 }
@@ -547,6 +650,8 @@ impl Cmd {
         print0: bool,
         reverse: bool,
         tz: Timezone,
+        json: bool,
+        agent: Option<String>,
     ) -> Result<()> {
         let filters = match (session, cwd) {
             (true, true) => [Session, Directory],
@@ -558,21 +663,30 @@ impl Cmd {
             ],
         };
 
-        let history = db
+        let mut history = db
             .list(&filters, &context, None, false, include_deleted)
             .await?;
 
-        print_list(
-            &history,
-            mode,
-            match format {
-                None => Some(settings.history_format.as_str()),
-                _ => format.as_deref(),
-            },
-            print0,
-            reverse,
-            tz,
-        );
+        // Filter by agent_id if specified
+        if let Some(ref agent_filter) = agent {
+            history.retain(|h| h.agent_id.as_ref() == Some(agent_filter));
+        }
+
+        if json {
+            print_json(&history, reverse);
+        } else {
+            print_list(
+                &history,
+                mode,
+                match format {
+                    None => Some(settings.history_format.as_str()),
+                    _ => format.as_deref(),
+                },
+                print0,
+                reverse,
+                tz,
+            );
+        }
 
         Ok(())
     }
@@ -747,11 +861,14 @@ impl Cmd {
                 reverse,
                 timezone,
                 format,
+                json,
+                agent,
             } => {
                 let mode = ListMode::from_flags(human, cmd_only);
                 let tz = timezone.unwrap_or(settings.timezone);
                 Self::handle_list(
                     &db, settings, context, session, cwd, mode, format, false, print0, reverse, tz,
+                    json, agent,
                 )
                 .await
             }
@@ -761,26 +878,42 @@ impl Cmd {
                 cmd_only,
                 timezone,
                 format,
+                json,
             } => {
                 let last = db.last().await?;
                 let last = last.as_slice();
                 let tz = timezone.unwrap_or(settings.timezone);
-                print_list(
-                    last,
-                    ListMode::from_flags(human, cmd_only),
-                    match format {
-                        None => Some(settings.history_format.as_str()),
-                        _ => format.as_deref(),
-                    },
-                    false,
-                    true,
-                    tz,
-                );
+
+                if json {
+                    print_json(last, true);
+                } else {
+                    print_list(
+                        last,
+                        ListMode::from_flags(human, cmd_only),
+                        match format {
+                            None => Some(settings.history_format.as_str()),
+                            _ => format.as_deref(),
+                        },
+                        false,
+                        true,
+                        tz,
+                    );
+                }
 
                 Ok(())
             }
 
             Self::InitStore => history_store.init_store(&db).await,
+
+            Self::Session(SessionCmd::Tag { agent }) => {
+                // Output shell commands to set the ATUIN_AGENT_ID environment variable
+                // Users should eval this output, e.g.: eval "$(atuin history session tag --agent my-agent)"
+                println!(
+                    "export ATUIN_AGENT_ID={}",
+                    shell_escape::escape(agent.into())
+                );
+                Ok(())
+            }
 
             Self::Prune { dry_run } => {
                 Self::handle_prune(&db, settings, store, context, dry_run).await

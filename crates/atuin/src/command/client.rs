@@ -57,6 +57,7 @@ mod import;
 mod info;
 mod init;
 mod kv;
+mod memory;
 mod scripts;
 mod search;
 mod stats;
@@ -71,7 +72,7 @@ pub enum Cmd {
     History(history::Cmd),
 
     /// Import shell history from file
-    #[command(subcommand)]
+    #[command()]
     Import(import::Cmd),
 
     /// Calculate statistics for your history
@@ -104,6 +105,10 @@ pub enum Cmd {
     #[command(subcommand)]
     Scripts(scripts::Cmd),
 
+    /// Manage agent memories linked to commands
+    #[command(subcommand)]
+    Memory(memory::Cmd),
+
     /// Print Atuin's shell init script
     #[command()]
     Init(init::Cmd),
@@ -114,7 +119,7 @@ pub enum Cmd {
 
     /// Run the doctor to check for common issues
     #[command()]
-    Doctor,
+    Doctor(doctor::Cmd),
 
     #[command()]
     Wrapped { year: Option<i32> },
@@ -314,7 +319,7 @@ impl Cmd {
         match self {
             Self::History(history) => return history.run(&settings).await,
             Self::Init(init) => return init.run(&settings).await,
-            Self::Doctor => return doctor::run(&settings).await,
+            Self::Doctor(doctor) => return doctor.run(&settings).await,
             _ => {}
         }
 
@@ -346,6 +351,8 @@ impl Cmd {
 
             Self::Scripts(scripts) => scripts.run(&settings, sqlite_store, &db).await,
 
+            Self::Memory(memory) => memory.run(&settings, &db).await,
+
             Self::Info => {
                 info::run(&settings);
                 Ok(())
@@ -361,7 +368,7 @@ impl Cmd {
             #[cfg(feature = "daemon")]
             Self::Daemon(cmd) => cmd.run(settings, sqlite_store, db).await,
 
-            Self::History(_) | Self::Init(_) | Self::Doctor => unreachable!(),
+            Self::History(_) | Self::Init(_) | Self::Doctor(_) => unreachable!(),
         }
     }
 }

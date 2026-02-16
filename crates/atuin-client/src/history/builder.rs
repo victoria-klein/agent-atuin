@@ -94,6 +94,8 @@ pub struct HistoryFromDb {
     author: String,
     intent: Option<String>,
     deleted_at: Option<time::OffsetDateTime>,
+    #[builder(default, setter(strip_option, into))]
+    agent_id: Option<String>,
 }
 
 impl From<HistoryFromDb> for History {
@@ -110,6 +112,7 @@ impl From<HistoryFromDb> for History {
             author: from_db.author,
             intent: from_db.intent,
             deleted_at: from_db.deleted_at,
+            agent_id: from_db.agent_id,
         }
     }
 }

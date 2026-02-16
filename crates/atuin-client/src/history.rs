@@ -81,6 +81,9 @@ pub struct History {
     pub intent: Option<String>,
     /// Timestamp, which is set when the entry is deleted, allowing a soft delete.
     pub deleted_at: Option<OffsetDateTime>,
+    /// Agent ID, used to track which AI agent executed this command.
+    /// Can be set via ATUIN_AGENT_ID environment variable.
+    pub agent_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
@@ -143,6 +146,7 @@ impl History {
             .unwrap_or_else(|| Self::author_from_hostname(hostname.as_str()));
         let intent = Self::normalize_optional_field(intent)
             .or_else(|| Self::normalize_optional_field(env::var(HISTORY_INTENT_ENV).ok()));
+        let agent_id = env::var("ATUIN_AGENT_ID").ok();
 
         Self {
             id: uuid_v7().as_simple().to_string().into(),
@@ -156,6 +160,7 @@ impl History {
             author,
             intent,
             deleted_at,
+            agent_id,
         }
     }
 
@@ -274,6 +279,7 @@ impl History {
             deleted_at: deleted_at
                 .map(|t| OffsetDateTime::from_unix_timestamp_nanos(t as i128))
                 .transpose()?,
+            agent_id: None,
         })
     }
 
@@ -616,6 +622,7 @@ mod tests {
             author: "conrad.ludgate".to_owned(),
             intent: None,
             deleted_at: None,
+            agent_id: None,
         };
 
         let serialized = history.serialize().expect("failed to serialize history");
@@ -644,6 +651,7 @@ mod tests {
             author: "conrad.ludgate".to_owned(),
             intent: None,
             deleted_at: Some(datetime!(2023-11-19 20:18 +00:00)),
+            agent_id: None,
         };
 
         let serialized = history.serialize().expect("failed to serialize history");
@@ -668,6 +676,7 @@ mod tests {
             author: "claude".to_owned(),
             intent: Some("check repository status".to_owned()),
             deleted_at: None,
+            agent_id: None,
         };
 
         let serialized = history.serialize().expect("failed to serialize history");
@@ -710,6 +719,7 @@ mod tests {
             author: "conrad.ludgate".to_owned(),
             intent: None,
             deleted_at: None,
+            agent_id: None,
         };
 
         let bytes_v1 = current.serialize().expect("failed to serialize history");

@@ -1,6 +1,7 @@
 use clap::Parser;
 use eyre::Result;
 use interim::parse_date_string;
+use serde::Serialize;
 use time::{Duration, OffsetDateTime, Time};
 
 use atuin_client::{
@@ -10,6 +11,22 @@ use atuin_client::{
 };
 
 use atuin_history::stats::{compute, pretty_print};
+
+/// JSON output format for stats
+#[derive(Debug, Serialize)]
+pub struct StatsJson {
+    pub period: String,
+    pub total_commands: usize,
+    pub unique_commands: usize,
+    pub top: Vec<StatsTopJson>,
+    pub ngram_size: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StatsTopJson {
+    pub command: String,
+    pub count: usize,
+}
 
 fn parse_ngram_size(s: &str) -> Result<usize, String> {
     let value = s
@@ -36,6 +53,10 @@ pub struct Cmd {
     /// The number of consecutive commands to consider
     #[arg(long, short, default_value = "1", value_parser = parse_ngram_size)]
     ngram_size: usize,
+
+    /// Output in JSON format
+    #[arg(long)]
+    json: bool,
 }
 
 impl Cmd {
@@ -77,7 +98,25 @@ impl Cmd {
         let stats = compute(settings, &history, self.count, self.ngram_size);
 
         if let Some(stats) = stats {
-            pretty_print(stats, self.ngram_size, theme);
+            if self.json {
+                let json_stats = StatsJson {
+                    period: words.clone(),
+                    total_commands: stats.total_commands,
+                    unique_commands: stats.unique_commands,
+                    top: stats
+                        .top
+                        .iter()
+                        .map(|(commands, count)| StatsTopJson {
+                            command: commands.join(" | "),
+                            count: *count,
+                        })
+                        .collect(),
+                    ngram_size: self.ngram_size,
+                };
+                println!("{}", serde_json::to_string(&json_stats)?);
+            } else {
+                pretty_print(stats, self.ngram_size, theme);
+            }
         }
 
         Ok(())

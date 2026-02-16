@@ -1,0 +1,28 @@
+[package]
+name = "atuin-memory"
+edition = "2024"
+description = "Memory store for Atuin - agent memories linked to commands"
+
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+eyre.workspace = true
+fs-err.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+tracing = "0.1"
+
+atuin-common = { path = "../atuin-common", version = "18.13.0-beta.1" }
+
+[dependencies.sqlx]
+workspace = true
+features = ["runtime-tokio-rustls", "sqlite"]

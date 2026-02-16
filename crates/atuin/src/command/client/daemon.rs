@@ -15,7 +15,28 @@ use clap::Subcommand;
 use daemonize::Daemonize;
 use eyre::{Result, WrapErr, bail, eyre};
 use fs4::fs_std::FileExt;
+use serde::Serialize;
 use tokio::time::sleep;
+
+/// JSON output format for daemon status
+#[derive(Debug, Serialize)]
+pub struct DaemonStatusJson {
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub healthy: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub socket_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tcp_port: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restart_reason: Option<String>,
+}
 
 #[derive(clap::Args, Debug)]
 pub struct Cmd {
@@ -49,7 +70,11 @@ pub enum SubCmd {
     },
 
     /// Show the daemon's current status
-    Status,
+    Status {
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+    },
 
     /// Stop the daemon gracefully
     Stop,
@@ -91,7 +116,7 @@ impl Cmd {
                 run(settings, store, history_db, false).await
             }
             Some(SubCmd::Start { force, .. }) => run(settings, store, history_db, force).await,
-            Some(SubCmd::Status) => status_cmd(&settings).await,
+            Some(SubCmd::Status { json }) => status_cmd(&settings, json).await,
             Some(SubCmd::Stop) => stop_cmd(&settings).await,
             Some(SubCmd::Restart) => restart_cmd(&settings).await,
         }
@@ -465,26 +490,74 @@ pub async fn end_history(settings: &Settings, id: String, duration: u64, exit: i
     Ok(())
 }
 
-async fn status_cmd(settings: &Settings) -> Result<()> {
+async fn status_cmd(settings: &Settings, json: bool) -> Result<()> {
     match probe(settings).await {
         Probe::Ready(mut client) => {
             let status = client.status().await?;
-            println!("Daemon running");
-            println!("  PID:      {}", status.pid);
-            println!("  Version:  {}", status.version);
-            println!("  Protocol: {}", status.protocol);
-            println!("  Healthy:  {}", status.healthy);
-            #[cfg(unix)]
-            println!("  Socket:   {}", settings.daemon.socket_path);
-            #[cfg(not(unix))]
-            println!("  Port:     {}", settings.daemon.tcp_port);
+            if json {
+                let json_status = DaemonStatusJson {
+                    status: "running".to_string(),
+                    pid: Some(status.pid),
+                    version: Some(status.version),
+                    protocol: Some(status.protocol),
+                    healthy: Some(status.healthy),
+                    #[cfg(unix)]
+                    socket_path: Some(settings.daemon.socket_path.clone()),
+                    #[cfg(not(unix))]
+                    socket_path: None,
+                    #[cfg(unix)]
+                    tcp_port: None,
+                    #[cfg(not(unix))]
+                    tcp_port: Some(settings.daemon.tcp_port),
+                    restart_reason: None,
+                };
+                println!("{}", serde_json::to_string(&json_status)?);
+            } else {
+                println!("Daemon running");
+                println!("  PID:      {}", status.pid);
+                println!("  Version:  {}", status.version);
+                println!("  Protocol: {}", status.protocol);
+                println!("  Healthy:  {}", status.healthy);
+                #[cfg(unix)]
+                println!("  Socket:   {}", settings.daemon.socket_path);
+                #[cfg(not(unix))]
+                println!("  Port:     {}", settings.daemon.tcp_port);
+            }
         }
         Probe::NeedsRestart(reason) => {
-            println!("Daemon running (needs restart)");
-            println!("  Reason: {reason}");
+            if json {
+                let json_status = DaemonStatusJson {
+                    status: "needs_restart".to_string(),
+                    pid: None,
+                    version: None,
+                    protocol: None,
+                    healthy: None,
+                    socket_path: None,
+                    tcp_port: None,
+                    restart_reason: Some(reason),
+                };
+                println!("{}", serde_json::to_string(&json_status)?);
+            } else {
+                println!("Daemon running (needs restart)");
+                println!("  Reason: {reason}");
+            }
         }
         Probe::Unreachable(_) => {
-            println!("Daemon is not running");
+            if json {
+                let json_status = DaemonStatusJson {
+                    status: "not_running".to_string(),
+                    pid: None,
+                    version: None,
+                    protocol: None,
+                    healthy: None,
+                    socket_path: None,
+                    tcp_port: None,
+                    restart_reason: None,
+                };
+                println!("{}", serde_json::to_string(&json_status)?);
+            } else {
+                println!("Daemon is not running");
+            }
         }
     }
 

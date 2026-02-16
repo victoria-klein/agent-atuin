@@ -5,11 +5,19 @@ use atuin_client::database::Sqlite;
 use atuin_client::settings::Settings;
 use atuin_common::shell::{Shell, shell_name};
 use atuin_common::utils;
+use clap::Parser;
 use colored::Colorize;
 use eyre::Result;
 use serde::Serialize;
 
 use sysinfo::{Disks, System, get_current_pid};
+
+#[derive(Parser, Debug)]
+pub struct Cmd {
+    /// Output in JSON format (skips header text and includes issues array)
+    #[arg(long)]
+    json: bool,
+}
 
 #[derive(Debug, Serialize)]
 struct ShellInfo {
@@ -339,6 +347,14 @@ struct DoctorDump {
     pub atuin: AtuinInfo,
     pub shell: ShellInfo,
     pub system: SystemInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issues: Option<Vec<DoctorIssue>>,
+}
+
+#[derive(Debug, Serialize)]
+struct DoctorIssue {
+    pub severity: String,
+    pub message: String,
 }
 
 impl DoctorDump {
@@ -347,23 +363,37 @@ impl DoctorDump {
             atuin: AtuinInfo::new(settings).await,
             shell: ShellInfo::new(),
             system: SystemInfo::new(),
+            issues: None,
         }
     }
 }
 
-fn checks(info: &DoctorDump) {
-    println!(); // spacing
-    //
-    let zfs_error = "[Filesystem] ZFS is known to have some issues with SQLite. Atuin uses SQLite heavily. If you are having poor performance, there are some workarounds here: https://github.com/atuinsh/atuin/issues/952".bold().red();
-    let bash_plugin_error = "[Shell] If you are using Bash, Atuin requires that either bash-preexec or ble.sh (>= 0.4) be installed. An older ble.sh may not be detected. so ignore this if you have ble.sh >= 0.4 set up! Read more here: https://docs.atuin.sh/guide/installation/#bash".bold().red();
-    let blesh_integration_error = "[Shell] Atuin and ble.sh seem to be loaded in the session, but the integration does not seem to be working. Please check the setup in .bashrc.".bold().red();
+fn checks(info: &DoctorDump, collect_issues: bool) -> Vec<DoctorIssue> {
+    let mut issues = Vec::new();
+
+    let zfs_message = "[Filesystem] ZFS is known to have some issues with SQLite. Atuin uses SQLite heavily. If you are having poor performance, there are some workarounds here: https://github.com/atuinsh/atuin/issues/952";
+    let bash_plugin_message = "[Shell] If you are using Bash, Atuin requires that either bash-preexec or ble.sh (>= 0.4) be installed. An older ble.sh may not be detected. so ignore this if you have ble.sh >= 0.4 set up! Read more here: https://docs.atuin.sh/guide/installation/#bash";
+    let blesh_integration_message = "[Shell] Atuin and ble.sh seem to be loaded in the session, but the integration does not seem to be working. Please check the setup in .bashrc.";
+
+    if !collect_issues {
+        println!(); // spacing
+    }
 
     // ZFS: https://github.com/atuinsh/atuin/issues/952
     if info.system.disks.iter().any(|d| d.filesystem == "zfs") {
-        println!("{zfs_error}");
+        if collect_issues {
+            issues.push(DoctorIssue {
+                severity: "warning".to_string(),
+                message: zfs_message.to_string(),
+            });
+        } else {
+            println!("{}", zfs_message.bold().red());
+        }
     }
 
-    info.atuin.setting_paths.verify();
+    if !collect_issues {
+        info.atuin.setting_paths.verify();
+    }
 
     // Shell
     if info.shell.name == "bash" {
@@ -373,29 +403,58 @@ fn checks(info: &DoctorDump) {
             .iter()
             .any(|p| p == "blesh" || p == "bash-preexec")
         {
-            println!("{bash_plugin_error}");
+            if collect_issues {
+                issues.push(DoctorIssue {
+                    severity: "warning".to_string(),
+                    message: bash_plugin_message.to_string(),
+                });
+            } else {
+                println!("{}", bash_plugin_message.bold().red());
+            }
         }
 
         if info.shell.plugins.iter().any(|plugin| plugin == "atuin")
             && info.shell.plugins.iter().any(|plugin| plugin == "blesh")
             && info.shell.preexec.as_ref().is_some_and(|val| val == "none")
         {
-            println!("{blesh_integration_error}");
+            if collect_issues {
+                issues.push(DoctorIssue {
+                    severity: "warning".to_string(),
+                    message: blesh_integration_message.to_string(),
+                });
+            } else {
+                println!("{}", blesh_integration_message.bold().red());
+            }
         }
     }
+
+    issues
 }
 
-pub async fn run(settings: &Settings) -> Result<()> {
-    println!("{}", "Atuin Doctor".bold());
-    println!("Checking for diagnostics");
-    let dump = DoctorDump::new(settings).await;
+impl Cmd {
+    pub async fn run(&self, settings: &Settings) -> Result<()> {
+        if self.json {
+            let mut dump = DoctorDump::new(settings).await;
+            let issues = checks(&dump, true);
+            dump.issues = if issues.is_empty() {
+                None
+            } else {
+                Some(issues)
+            };
+            println!("{}", serde_json::to_string(&dump)?);
+        } else {
+            println!("{}", "Atuin Doctor".bold());
+            println!("Checking for diagnostics");
+            let dump = DoctorDump::new(settings).await;
 
-    checks(&dump);
+            checks(&dump, false);
 
-    let dump = serde_json::to_string_pretty(&dump)?;
+            let json_dump = serde_json::to_string_pretty(&dump)?;
 
-    println!("\nPlease include the output below with any bug reports or issues\n");
-    println!("{dump}");
+            println!("\nPlease include the output below with any bug reports or issues\n");
+            println!("{json_dump}");
+        }
 
-    Ok(())
+        Ok(())
+    }
 }

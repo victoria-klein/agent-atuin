@@ -138,6 +138,14 @@ pub struct Cmd {
     /// File name to write the result to (hidden from help as this is meant to be used from a script)
     #[arg(long = "result-file", hide = true)]
     result_file: Option<String>,
+
+    /// Output in JSON format (NDJSON, one object per line) - non-interactive only
+    #[arg(long)]
+    json: bool,
+
+    /// Filter by agent ID
+    #[arg(long)]
+    agent: Option<String>,
 }
 
 impl Cmd {
@@ -248,6 +256,11 @@ impl Cmd {
             let mut entries =
                 run_non_interactive(settings, opt_filter.clone(), &query, &db).await?;
 
+            // Filter by agent_id if specified
+            if let Some(ref agent_filter) = self.agent {
+                entries.retain(|h| h.agent_id.as_ref() == Some(agent_filter));
+            }
+
             if entries.is_empty() {
                 std::process::exit(1)
             }
@@ -272,6 +285,8 @@ impl Cmd {
                     entries =
                         run_non_interactive(settings, opt_filter.clone(), &query, &db).await?;
                 }
+            } else if self.json {
+                super::history::print_json(&entries, true);
             } else {
                 let format = match self.format {
                     None => Some(settings.history_format.as_str()),

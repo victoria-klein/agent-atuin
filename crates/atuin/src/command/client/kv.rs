@@ -1,8 +1,29 @@
 use clap::Subcommand;
 use eyre::{Context, Result, eyre};
+use serde::Serialize;
 
 use atuin_client::{encryption, record::sqlite_store::SqliteStore, settings::Settings};
 use atuin_kv::store::KvStore;
+
+/// JSON output format for kv get
+#[derive(Debug, Serialize)]
+pub struct KvGetJson {
+    pub key: String,
+    pub value: String,
+    pub namespace: String,
+}
+
+/// JSON output format for kv list
+#[derive(Debug, Serialize)]
+pub struct KvListJson {
+    pub keys: Vec<KvKeyJson>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KvKeyJson {
+    pub key: String,
+    pub namespace: String,
+}
 
 #[derive(Subcommand, Debug)]
 #[command(infer_subcommands = true)]
@@ -41,6 +62,10 @@ pub enum Cmd {
         /// Namespace for the key-value pair
         #[arg(long, short, default_value = "default")]
         namespace: String,
+
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
     },
 
     /// List all keys in a namespace, or in all namespaces
@@ -53,6 +78,10 @@ pub enum Cmd {
         /// List all keys in all namespaces
         #[arg(long, short, alias = "all")]
         all_namespaces: bool,
+
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
     },
 
     /// Rebuild the KV store
@@ -85,11 +114,24 @@ impl Cmd {
 
             Self::Delete { keys, namespace } => kv_store.delete(namespace, keys).await,
 
-            Self::Get { key, namespace } => {
+            Self::Get {
+                key,
+                namespace,
+                json,
+            } => {
                 let kv = kv_store.get(namespace, key).await?;
 
                 if let Some(val) = kv {
-                    println!("{val}");
+                    if *json {
+                        let json_output = KvGetJson {
+                            key: key.clone(),
+                            value: val,
+                            namespace: namespace.clone(),
+                        };
+                        println!("{}", serde_json::to_string(&json_output)?);
+                    } else {
+                        println!("{val}");
+                    }
                 }
 
                 Ok(())
@@ -98,6 +140,7 @@ impl Cmd {
             Self::List {
                 namespace,
                 all_namespaces,
+                json,
             } => {
                 let entries = if *all_namespaces {
                     kv_store.list(None).await?
@@ -105,11 +148,24 @@ impl Cmd {
                     kv_store.list(Some(namespace)).await?
                 };
 
-                for entry in entries {
-                    if *all_namespaces {
-                        println!("{}.{}", entry.namespace, entry.key);
-                    } else {
-                        println!("{}", entry.key);
+                if *json {
+                    let json_output = KvListJson {
+                        keys: entries
+                            .iter()
+                            .map(|e| KvKeyJson {
+                                key: e.key.clone(),
+                                namespace: e.namespace.clone(),
+                            })
+                            .collect(),
+                    };
+                    println!("{}", serde_json::to_string(&json_output)?);
+                } else {
+                    for entry in entries {
+                        if *all_namespaces {
+                            println!("{}.{}", entry.namespace, entry.key);
+                        } else {
+                            println!("{}", entry.key);
+                        }
                     }
                 }
 

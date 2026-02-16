@@ -21,8 +21,8 @@ pub struct HistoryStore {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum HistoryRecord {
-    Create(History),   // Create a history record
-    Delete(HistoryId), // Delete a history record, identified by ID
+    Create(Box<History>), // Create a history record
+    Delete(HistoryId),    // Delete a history record, identified by ID
 }
 
 impl HistoryRecord {
@@ -84,7 +84,7 @@ impl HistoryRecord {
 
                 let record = History::deserialize(bytes.remaining_slice(), version)?;
 
-                Ok(HistoryRecord::Create(record))
+                Ok(HistoryRecord::Create(Box::new(record)))
             }
 
             // 1 -> HistoryRecord::Delete
@@ -183,7 +183,7 @@ impl HistoryStore {
     pub async fn push(&self, history: History) -> Result<(RecordId, RecordIdx)> {
         // TODO(ellie): move the history store to its own file
         // it's tiny rn so fine as is
-        let record = HistoryRecord::Create(history);
+        let record = HistoryRecord::Create(Box::new(history));
 
         self.push_record(record).await
     }
@@ -229,7 +229,7 @@ impl HistoryStore {
         for i in history {
             match i {
                 HistoryRecord::Create(h) => {
-                    creates.push(h);
+                    creates.push(*h);
                 }
                 HistoryRecord::Delete(id) => {
                     deletes.push(id);
@@ -329,7 +329,7 @@ impl HistoryStore {
             if i.deleted_at.is_some() {
                 records.push(HistoryRecord::Delete(i.id));
             } else {
-                records.push(HistoryRecord::Create(i));
+                records.push(HistoryRecord::Create(Box::new(i)));
             }
         }
 
@@ -381,7 +381,7 @@ mod tests {
             deleted_at: None,
         };
 
-        let record = HistoryRecord::Create(history);
+        let record = HistoryRecord::Create(Box::new(history));
 
         let serialized = record.serialize().expect("failed to serialize history");
         assert_eq!(serialized.0, bytes);
