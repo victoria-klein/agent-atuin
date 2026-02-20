@@ -221,6 +221,7 @@ dependencies = [
  "atuin-dotfiles",
  "atuin-history",
  "atuin-kv",
+ "atuin-memory",
  "atuin-scripts",
  "atuin-server",
  "atuin-server-database",
@@ -231,6 +232,7 @@ dependencies = [
  "colored",
  "crossterm",
  "daemonize",
+ "directories",
  "eyre",
  "fs-err",
  "fs4",
@@ -251,6 +253,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "shell-escape",
  "shlex",
  "sysinfo",
  "tempfile",
@@ -441,6 +444,23 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "typed-builder",
+]
+
+[[package]]
+name = "atuin-memory"
+version = "18.13.0-beta.1"
+dependencies = [
+ "async-trait",
+ "atuin-common",
+ "eyre",
+ "fs-err",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "time",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -4428,6 +4448,12 @@ checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
 dependencies = [
  "lazy_static",
 ]
+
+[[package]]
+name = "shell-escape"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45bb67a18fa91266cc7807181f62f9178a6873bfad7dc788c42e6430db40184f"
 
 [[package]]
 name = "shellexpand"

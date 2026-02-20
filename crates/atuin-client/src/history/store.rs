@@ -379,6 +379,7 @@ mod tests {
             author: "ellie".to_owned(),
             intent: None,
             deleted_at: None,
+            agent_id: None,
         };
 
         let record = HistoryRecord::Create(Box::new(history));

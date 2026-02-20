@@ -94,7 +94,7 @@ pub struct HistoryFromDb {
     author: String,
     intent: Option<String>,
     deleted_at: Option<time::OffsetDateTime>,
-    #[builder(default, setter(strip_option, into))]
+    #[builder(default, setter(into))]
     agent_id: Option<String>,
 }
 

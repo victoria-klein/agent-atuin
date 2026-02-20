@@ -258,6 +258,7 @@ fn decode(bytes: &[u8]) -> Result<History> {
         deleted_at: deleted_at
             .map(|t| OffsetDateTime::parse(t, &Rfc3339))
             .transpose()?,
+        agent_id: None,
     })
 }
 
@@ -338,6 +339,7 @@ mod test {
             author: "conrad.ludgate".to_owned(),
             intent: None,
             deleted_at: None,
+            agent_id: None,
         };
 
         let h = decode(&bytes).unwrap();
@@ -361,6 +363,7 @@ mod test {
             author: "conrad.ludgate".to_owned(),
             intent: None,
             deleted_at: Some(datetime!(2023-05-28 18:35:40.633872 +00:00)),
+            agent_id: None,
         };
 
         let b = encode(&history).unwrap();
@@ -394,6 +397,7 @@ mod test {
             author: "conrad.ludgate".to_owned(),
             intent: None,
             deleted_at: None,
+            agent_id: None,
         };
 
         let h = decode(&bytes).unwrap();

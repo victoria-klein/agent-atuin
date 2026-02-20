@@ -18,7 +18,7 @@ use crate::command::client::account;
 #[derive(Debug, Serialize)]
 pub struct SyncResultJson {
     pub status: String,
-    pub uploaded: u64,
+    pub uploaded: i64,
     pub downloaded: usize,
     pub history_count: i64,
     pub store_history_count: u64,
@@ -101,7 +101,7 @@ async fn run(
     store: SqliteStore,
 ) -> Result<()> {
     let mut store_init_triggered = false;
-    let mut total_uploaded: u64 = 0;
+    let mut total_uploaded: i64 = 0;
     let mut total_downloaded: usize = 0;
 
     if settings.sync.records {

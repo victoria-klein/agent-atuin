@@ -266,11 +266,7 @@ impl Sqlite {
                 deleted_at.and_then(|t| OffsetDateTime::from_unix_timestamp_nanos(t as i128).ok()),
             );
 
-        if let Some(agent_id) = agent_id {
-            builder = builder.agent_id(agent_id);
-        }
-
-        builder.build().into()
+        builder.agent_id(agent_id).build().into()
     }
 }
 

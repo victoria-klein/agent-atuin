@@ -351,6 +351,7 @@ impl History {
             deleted_at: deleted_at
                 .map(|t| OffsetDateTime::from_unix_timestamp_nanos(t as i128))
                 .transpose()?,
+            agent_id: None,
         })
     }
 
