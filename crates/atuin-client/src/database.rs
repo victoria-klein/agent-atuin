@@ -248,7 +248,7 @@ impl Sqlite {
         let intent = intent.filter(|intent| !intent.trim().is_empty());
         let agent_id: Option<String> = row.try_get("agent_id").ok().flatten();
 
-        let mut builder = History::from_db()
+        let builder = History::from_db()
             .id(row.get("id"))
             .timestamp(
                 OffsetDateTime::from_unix_timestamp_nanos(row.get::<i64, _>("timestamp") as i128)

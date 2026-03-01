@@ -214,7 +214,6 @@ pub struct HistoryImporter<'db, DB: Database> {
     buf: Vec<History>,
     db: &'db DB,
     imported_count: Arc<AtomicUsize>,
-    json_mode: bool,
 }
 
 impl<'db, DB: Database> HistoryImporter<'db, DB> {
@@ -228,7 +227,6 @@ impl<'db, DB: Database> HistoryImporter<'db, DB> {
             buf: Vec::with_capacity(BATCH_SIZE),
             db,
             imported_count: Arc::new(AtomicUsize::new(0)),
-            json_mode,
         }
     }
 
