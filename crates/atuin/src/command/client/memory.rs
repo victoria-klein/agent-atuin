@@ -53,7 +53,7 @@ pub enum Cmd {
         /// The description of what was done
         description: String,
 
-        /// Link the last N commands from the current session
+        /// Link the last N commands from history
         #[arg(long = "link-last")]
         link_last: Option<usize>,
 
@@ -131,7 +131,7 @@ pub enum Cmd {
         #[arg(long)]
         history_id: Vec<String>,
 
-        /// Link the last N commands from the current session
+        /// Link the last N commands from history
         #[arg(long = "last")]
         last: Option<usize>,
     },
@@ -384,12 +384,12 @@ impl Cmd {
             linked_count += 1;
         }
 
-        // Link last N commands from session
+        // Link last N commands from history (global, not session-scoped)
         if let Some(n) = link_last {
             let context = atuin_client::database::current_context().await?;
             let history = db
                 .list(
-                    &[atuin_client::settings::FilterMode::Session],
+                    &[atuin_client::settings::FilterMode::Global],
                     &context,
                     Some(n),
                     false,

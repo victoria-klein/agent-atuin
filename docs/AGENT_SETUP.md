@@ -124,7 +124,7 @@ The memory store allows agents to create searchable memories linked to commands 
 ### Create a Memory
 
 ```bash
-# Create a memory and link the last 5 commands
+# Create a memory and link the 5 most recent commands from history
 atuin memory create "Fixed authentication bug by updating JWT validation" --link-last 5
 
 # Create with specific command IDs
@@ -302,9 +302,8 @@ atuin memory run <memory-id> --here
 | Variable | Description |
 |----------|-------------|
 | `ATUIN_AGENT_ID` | Identifies the agent for command tagging |
-| `ATUIN_SESSION` | Session identifier (auto-generated) |
-| `ATUIN_SESSION_MEMORY_ID` | Root memory ID for the current session |
-| `ATUIN_PARENT_MEMORY_ID` | Default parent for new memories (used by `memory create`) |
+| `ATUIN_SESSION` | Session identifier (set by shell integration or plugin) |
+| `ATUIN_PARENT_MEMORY_ID` | Default parent for new memories (used by `memory create`, optional) |
 | `ATUIN_LOG` | Log level (e.g., `debug`, `info`) |
 
 ## Database Locations
